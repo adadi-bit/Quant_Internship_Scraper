@@ -8,33 +8,6 @@ direct **Apply →** link on each one.
 The scraper runs on GitHub Actions every 6 hours and the site is served by GitHub Pages,
 so the link you share stays up to date with nothing running on your laptop.
 
-## Publish it (one-time, ~5 minutes)
-
-1. Create a new **public** GitHub repository (e.g. `quant-radar`). Don't add a README.
-2. Push this folder to it:
-
-   ```bash
-   cd ~/Internship_Scraper
-   git init -b main
-   git add .
-   git commit -m "Quant Radar"
-   git remote add origin https://github.com/<your-username>/quant-radar.git
-   git push -u origin main
-   ```
-
-3. On GitHub: **Settings → Actions → General → Workflow permissions → "Read and write
-   permissions"** → Save. (Lets the workflow commit the refreshed `jobs.json`.)
-4. **Actions** tab → *Scrape and publish* → **Run workflow**. Wait ~2 minutes; it commits
-   `docs/jobs.json`.
-5. **Settings → Pages → Source: "Deploy from a branch" → Branch `main`, folder `/docs`** → Save.
-
-A minute later your site is live at `https://<your-username>.github.io/quant-radar/`.
-That's the link to share. It re-scrapes every 6 hours automatically; you can also
-trigger it any time from the Actions tab.
-
-Optional: in `docs/index.html`, point the footer link (`#repo-link`) at your repo so
-visitors can suggest firms.
-
 ## Run it locally
 
 ```bash
