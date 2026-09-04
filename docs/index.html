@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quant Radar — Quant Internships</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="top">
+  <div class="wrap top-inner">
+    <a class="brand" href="./"><span class="brand-mark">◢</span> Quant Radar</a>
+    <nav class="tabs" id="tabs">
+      <button data-tab="intern" class="active">Internships</button>
+      <button data-tab="newgrad">New Grad</button>
+      <button data-tab="all">All roles</button>
+      <button data-tab="saved">Saved <span class="pill" id="cnt-saved">0</span></button>
+      <button data-tab="applied">Applied <span class="pill" id="cnt-applied">0</span></button>
+      <button data-tab="hidden">Hidden <span class="pill" id="cnt-hidden">0</span></button>
+    </nav>
+    <div class="top-right">
+      <span class="muted small" id="last-run">—</span>
+      <a class="btn" id="share-btn" href="#" title="Copy link to this view">Share view</a>
+    </div>
+  </div>
+</header>
+
+<main class="wrap layout">
+  <aside class="sidebar">
+    <div class="side-head">
+      <strong>Filters</strong>
+      <button class="link" id="reset-filters">Reset <span class="pill" id="active-filter-count">0</span></button>
+    </div>
+    <div class="search-box"><input id="q" type="search" placeholder="Search company or role…"></div>
+    <div id="facets"></div>
+    <div class="side-foot muted small">
+      Sources: company job boards (Greenhouse / Lever / Ashby), firm careers pages, GitHub lists (Simplify, Northwestern Quant, vanshb03), LinkedIn. Refreshed automatically every 6 hours. Saved / Applied / Hidden are stored in your browser only.
+    </div>
+  </aside>
+
+  <section class="content">
+    <div class="page-head">
+      <h1 id="page-title">Quant Internships</h1>
+      <div class="muted" id="match-count">Loading…</div>
+    </div>
+    <div class="toolbar">
+      <div class="sort">
+        <span class="muted small">Sort</span>
+        <button data-sort="posted" class="active">Newest opening</button>
+        <button data-sort="added">Recently added</button>
+        <button data-sort="company">Company A–Z</button>
+      </div>
+      <label class="check small"><input type="checkbox" id="group-toggle" checked> Group by company</label>
+    </div>
+    <div id="list"></div>
+    <div class="load-more">
+      <span class="muted small" id="showing"></span>
+      <button class="btn" id="load-more">Load more</button>
+    </div>
+  </section>
+</main>
+
+<footer class="wrap muted small foot">
+  Quant Radar · open source · <a id="repo-link" href="#">add a firm or report a bad listing on GitHub</a>
+</footer>
+<script src="main.js"></script>
+</body>
+</html>
