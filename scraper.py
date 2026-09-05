@@ -263,8 +263,8 @@ def collect(quick: bool = False, progress=None) -> tuple[list[dict], dict]:
                 prev = jobs.get(j["id"])
                 if prev is None or _better(j, prev):
                     if prev is not None:
-                        # keep the earliest date & richer description
-                        j["posted_at"] = min(filter(None, [j["posted_at"], prev["posted_at"]]), default=None)
+                        # better source wins; only fill gaps from the other record
+                        j["posted_at"] = j["posted_at"] or prev["posted_at"]
                         j["description"] = j["description"] or prev["description"]
                     jobs[j["id"]] = j
                 kept += 1
@@ -283,7 +283,7 @@ def _dedupe_similar(jobs: list[dict]) -> list[dict]:
         key = (j["company"].lower(), re.sub(r"[^a-z0-9]+", " ", j["title"].lower()).strip(), tuple(sorted(j["hubs"])))
         if key in by_key:
             keep = by_key[key]
-            keep["posted_at"] = min(filter(None, [keep["posted_at"], j["posted_at"]]), default=keep["posted_at"])
+            keep["posted_at"] = keep["posted_at"] or j["posted_at"]
             keep["description"] = keep["description"] or j["description"]
             if j["source"] not in keep["source"]:
                 keep["source"] += f" · also {j['source']}"

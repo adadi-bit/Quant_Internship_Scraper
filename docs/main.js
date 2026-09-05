@@ -50,7 +50,11 @@
     if (d < 30) return `${d}d ago`; if (d < 365) return `${Math.floor(d / 30)}mo ago`;
     return `${Math.floor(d / 365)}y ago`;
   }
-  const isNew = j => (Date.now() - new Date(j.first_seen)) < 2 * dayMs;
+  // "New" = the posting itself is recent (not merely new to our database)
+  const isNew = j => j.posted_at ? (today() - toDate(j.posted_at)) <= 3 * dayMs : (Date.now() - new Date(j.first_seen)) < 2 * dayMs;
+  const toDate = iso => iso ? new Date(iso.slice(0, 10) + "T00:00:00") : null;
+  const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const fmtD = iso => { const d = toDate(iso); return d ? `${MON[d.getMonth()]} ${d.getDate()}${d.getFullYear() !== today().getFullYear() ? " " + d.getFullYear() : ""}` : ""; };
   const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const colors = ["#1f5eff", "#0f8a5f", "#b26a00", "#7a3ff2", "#c2352e", "#0e7c86", "#a1258f", "#4b5563"];
   const color = name => colors[[...name].reduce((a, c) => a + c.charCodeAt(0), 0) % colors.length];
@@ -85,7 +89,8 @@
   const base = () => state.jobs.filter(j => tabPass(j) && queryPass(j));
 
   function sortJobs(list) {
-    const key = { posted: j => j.posted_at || j.first_seen.slice(0, 10), added: j => j.first_seen, company: j => j.company.toLowerCase() }[state.sort];
+    // unknown posting dates sort to the bottom of "Newest opening"
+    const key = { posted: j => j.posted_at || "0000", added: j => j.first_seen, company: j => j.company.toLowerCase() }[state.sort];
     const dir = state.sort === "company" ? 1 : -1;
     return list.sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0) * dir || a.company.localeCompare(b.company) || a.title.localeCompare(b.title));
   }
@@ -163,7 +168,7 @@
   }
 
   function roleHtml(j, rank) {
-    const posted = j.posted_at ? `Opened ${ago(j.posted_at)}` : `Added ${ago(j.first_seen)}`;
+    const posted = j.posted_at ? `Posted ${fmtD(j.posted_at)} · ${ago(j.posted_at)}` : `Posting date unknown · seen ${ago(j.first_seen)}`;
     const st = j.user_status;
     return `
       <div class="role ${st === "hidden" || !j.active ? "dim" : ""}" data-id="${j.id}">

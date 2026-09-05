@@ -71,7 +71,7 @@ def fetch_greenhouse(company: str, slug: str, content: bool = True) -> list[dict
             "title": j.get("title", "").strip(),
             "url": j.get("absolute_url"),
             "location": loc,
-            "posted_at": _iso(j.get("first_published") or j.get("updated_at")),
+            "posted_at": _iso(j.get("first_published")),
             "description": _text(j.get("content", ""))[:4000],
             "department": depts,
             "source": f"Greenhouse · {company}",
@@ -442,7 +442,9 @@ def _wd_posted(s: str) -> str | None:
         return today.isoformat()
     if "yesterday" in s:
         return (today - timedelta(days=1)).isoformat()
-    m = re.search(r"(\d+)\+?\s*days?", s)
+    if "+" in s:                      # "Posted 30+ Days Ago" — real date unknown
+        return None
+    m = re.search(r"(\d+)\s*days?", s)
     if m:
         return (today - timedelta(days=int(m.group(1)))).isoformat()
     return None
