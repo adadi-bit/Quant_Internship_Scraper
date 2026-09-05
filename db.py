@@ -12,7 +12,7 @@ SCHEMA = """
 CREATE TABLE IF NOT EXISTS jobs (
     id TEXT PRIMARY KEY,
     company TEXT, title TEXT, url TEXT, location TEXT,
-    hubs TEXT, category TEXT, level TEXT, eligibility TEXT, work_mode TEXT, season TEXT,
+    hubs TEXT, industry TEXT, category TEXT, level TEXT, eligibility TEXT, work_mode TEXT, season TEXT,
     posted_at TEXT, description TEXT, source TEXT, source_type TEXT,
     first_seen TEXT, last_seen TEXT, active INTEGER DEFAULT 1
 );
@@ -32,7 +32,7 @@ def connect() -> sqlite3.Connection:
 
 def _migrate(conn):
     cols = {r[1] for r in conn.execute("PRAGMA table_info(jobs)")}
-    if "hubs" not in cols or "level" not in cols:   # old schema -> rebuild
+    if not {"hubs", "level", "industry"} <= cols:   # old schema -> rebuild
         conn.executescript("DROP TABLE jobs;" + SCHEMA)
 
 
@@ -46,25 +46,28 @@ def upsert_jobs(jobs: list[dict], full_run: bool = True) -> dict:
     existing = {r["id"]: r for r in conn.execute("SELECT id, active, posted_at, description FROM jobs")}
     new = reactivated = 0
     seen_ids = set()
+    new_ids = []
     for j in jobs:
         seen_ids.add(j["id"])
         prev = existing.get(j["id"])
         active = 0 if j.get("closed") else 1
         if prev is None:
             new += 1 if active else 0
+            if active:
+                new_ids.append(j["id"])
             conn.execute(
-                "INSERT INTO jobs VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                (j["id"], j["company"], j["title"], j["url"], j["location"], json.dumps(j["hubs"]),
+                "INSERT INTO jobs VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (j["id"], j["company"], j["title"], j["url"], j["location"], json.dumps(j["hubs"]), j["industry"],
                  j["category"], j["level"], j["eligibility"], j["work_mode"], j["season"], j["posted_at"],
                  j["description"], j["source"], j["source_type"], now, now, active))
         else:
             if active and not prev["active"]:
                 reactivated += 1
             conn.execute(
-                """UPDATE jobs SET company=?, title=?, url=?, location=?, hubs=?, category=?, level=?, eligibility=?,
+                """UPDATE jobs SET company=?, title=?, url=?, location=?, hubs=?, industry=?, category=?, level=?, eligibility=?,
                    work_mode=?, season=?, posted_at=COALESCE(?, posted_at), description=CASE WHEN ?='' THEN description ELSE ? END,
                    source=?, source_type=?, last_seen=?, active=? WHERE id=?""",
-                (j["company"], j["title"], j["url"], j["location"], json.dumps(j["hubs"]), j["category"], j["level"],
+                (j["company"], j["title"], j["url"], j["location"], json.dumps(j["hubs"]), j["industry"], j["category"], j["level"],
                  j["eligibility"], j["work_mode"], j["season"], j["posted_at"], j["description"], j["description"],
                  j["source"], j["source_type"], now, active, j["id"]))
     closed = 0
@@ -79,7 +82,14 @@ def upsert_jobs(jobs: list[dict], full_run: bool = True) -> dict:
     conn.commit()
     total_active = conn.execute("SELECT COUNT(*) FROM jobs WHERE active=1").fetchone()[0]
     conn.close()
-    return {"new": new, "reactivated": reactivated, "closed": closed, "total_active": total_active, "scraped": len(jobs)}
+    return {"new": new, "reactivated": reactivated, "closed": closed, "total_active": total_active, "scraped": len(jobs), "new_ids": new_ids}
+
+
+def count_jobs() -> int:
+    conn = connect()
+    n = conn.execute("SELECT COUNT(*) FROM jobs").fetchone()[0]
+    conn.close()
+    return n
 
 
 def record_run(summary: dict):

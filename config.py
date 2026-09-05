@@ -54,6 +54,20 @@ GREENHOUSE = [
     ("VivCourt", "vivcourt"),
 ]
 
+# ---- tech (verified live boards) ----
+TECH_GREENHOUSE = [
+    ("Airbnb", "airbnb"), ("Databricks", "databricks"), ("Roblox", "roblox"), ("Datadog", "datadog"),
+    ("Duolingo", "duolingo"), ("Cloudflare", "cloudflare"), ("Robinhood", "robinhood"), ("Scale AI", "scaleai"),
+    ("Lyft", "lyft"), ("Pinterest", "pinterest"), ("Reddit", "reddit"), ("Discord", "discord"), ("Figma", "figma"),
+    ("Anthropic", "anthropic"), ("Nuro", "nuro"), ("Coinbase", "coinbase"), ("Dropbox", "dropbox"), ("Asana", "asana"),
+    ("Instacart", "instacart"), ("Affirm", "affirm"), ("Brex", "brex"), ("Chime", "chime"), ("SoFi", "sofi"),
+    ("Samsara", "samsara"), ("Verkada", "verkada"), ("Vercel", "vercel"), ("GitLab", "gitlab"), ("Elastic", "elastic"),
+    ("MongoDB", "mongodb"), ("xAI", "xai"),
+]
+TECH_LEVER = [("Palantir", "palantir")]
+TECH_ASHBY = [("Notion", "notion"), ("Plaid", "plaid")]
+GREENHOUSE += TECH_GREENHOUSE
+
 LEVER = [
     ("Belvedere Trading", "belvederetrading"),
     ("Valkyrie Trading", "valkyrietrading"),
@@ -64,6 +78,8 @@ ASHBY = [
     ("Voleon", "voleon"),
     ("Jump Trading", "jump"),
 ]
+LEVER += TECH_LEVER
+ASHBY += TECH_ASHBY
 
 # ------------------------------------------------ plain-HTML careers pages
 # Best effort: we pull every link whose text looks like an internship.
@@ -108,6 +124,11 @@ NEWGRAD_PATTERNS = [
 
 # ---------------------------------------------------------- LinkedIn search
 LINKEDIN_QUERIES = [
+    ("software engineer intern 2027", "United States"),
+    ("machine learning intern 2027", "United States"),
+    ("AI research intern", "United States"),
+    ("data science intern 2027", "United States"),
+    ("software engineer new grad 2027", "United States"),
     ("quantitative trading intern", "United States"),
     ("quantitative research intern", "United States"),
     ("quantitative developer intern", "United States"),
@@ -233,3 +254,40 @@ QUANT_FIRM_NAMES = [n.lower() for n, _ in GREENHOUSE + LEVER + ASHBY + HTML_PAGE
     "gelber", "trillium", "simplex", "epoch", "cfm", "winton", "alphagrep", "tanius",
     "aquatic", "vivcourt", "voleon", "valkyrie", "ansatz", "squarepoint", "qube", "point72",
 ]
+
+
+# ------------------------------------------------------------------ industry
+# Used for the "Industry" filter and for alert rules. Matched on lower-cased company name.
+QUANT_FIRMS = [n.lower() for n, _ in GREENHOUSE if n not in dict(TECH_GREENHOUSE)] + [n.lower() for n, _ in LEVER if n not in dict(TECH_LEVER)] + \
+    [n.lower() for n, _ in ASHBY if n not in dict(TECH_ASHBY)] + [n.lower() for n, _ in HTML_PAGES] + [
+    "citadel", "two sigma", "jane street", "hudson river", "susquehanna", "d. e. shaw", "millennium", "bridgewater",
+    "renaissance", "xtx", "g-research", "radix", "headlands", "wolverine", "balyasny", "cubist", "marshall wace",
+    "peak6", "tibra", "group one", "da vinci", "maven", "quantlab", "arrowstreet", "walleye", "trexquant", "tudor",
+    "verition", "graham capital", "jain global", "teza", "alphadyne", "kershner", "bluefin", "volant", "sunrise futures",
+    "prime trading", "hehmeyer", "gsr", "wintermute", "cumberland", "systematica", "aspect capital", "elliott",
+    "bluecrest", "brevan howard", "voloridge", "quantbot", "xantium", "garda", "capula", "stevens capital",
+    "boerboel", "edgehog", "anthelion", "infinitequant", "wallstreetquants", "hpr", "cboe", "cme group",
+]
+BANKS = ["jpmorgan", "goldman sachs", "morgan stanley", "bank of america", "barclays", "ubs", "deutsche bank", "nomura",
+         "jefferies", "wells fargo", "citi", "hsbc", "rbc", "royal bank", "bmo", "td ", "scotiabank", "blackrock", "vanguard",
+         "fidelity", "state street", "pimco", "wellington", "t. rowe", "franklin", "invesco", "capital group", "schroders",
+         "manulife", "prudential", "pgim", "northwestern mutual", "fannie mae", "freddie mac", "keybank", "ameriprise",
+         "bloomberg", "moody", "s&p global", "msci", "factset", "kpmg", "deloitte", "ey ", "pwc", "accenture", "mckinsey",
+         "bcg", "bain", "alberta investment", "conocophillips", "intercontinental exchange", "nasdaq", "nyse"]
+
+
+def industry_of(company: str) -> str:
+    c = (company or "").lower()
+    if any(q in c for q in QUANT_FIRMS if len(q) > 2):
+        return "Quant / trading"
+    if any(b in c for b in BANKS):
+        return "Bank / finance"
+    return "Tech"
+
+
+# ------------------------------------------------------------------ alerts
+# Which new postings trigger a phone push (see alerts.py). Everything else still
+# appears on the site, just silently.
+ALERT_INDUSTRIES = {"Quant / trading"}                       # any role at these firms
+ALERT_CATEGORIES = {"Quant Trading", "Quant Research", "Quant Dev"}   # these roles anywhere
+ALERT_COMPANY_SITE_ONLY_FOR_TECH = True                      # tech roles alert only when seen on the firm's own board

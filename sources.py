@@ -54,8 +54,8 @@ def _iso(dt) -> str | None:
 
 
 # ----------------------------------------------------------------- Greenhouse
-def fetch_greenhouse(company: str, slug: str) -> list[dict]:
-    url = f"https://boards-api.greenhouse.io/v1/boards/{slug}/jobs?content=true"
+def fetch_greenhouse(company: str, slug: str, content: bool = True) -> list[dict]:
+    url = f"https://boards-api.greenhouse.io/v1/boards/{slug}/jobs?content={'true' if content else 'false'}"
     try:
         jobs = _get(url).json().get("jobs", [])
     except Exception as e:
@@ -386,4 +386,118 @@ def fetch_linkedin(keywords: str, location: str, pages: int = 3) -> list[dict]:
             })
         if len(cards) < 10:
             break
+    return out
+
+
+# ------------------------------------------------------------------ Workday
+_WD_QUERIES = ["intern", "graduate", "new grad", "early career", "university"]
+
+
+def fetch_workday(company: str, host: str, site: str, queries=_WD_QUERIES, per_query: int = 100) -> list[dict]:
+    """Workday's public candidate-experience JSON API (POST .../wday/cxs/<tenant>/<site>/jobs)."""
+    tenant = host.split(".")[0]
+    api = f"https://{host}/wday/cxs/{tenant}/{site}/jobs"
+    out, seen = [], set()
+    for q in queries:
+        offset = 0
+        while offset < per_query:
+            try:
+                r = SESSION.post(api, json={"appliedFacets": {}, "limit": 20, "offset": offset, "searchText": q},
+                                 headers={"Accept": "application/json", "Content-Type": "application/json"}, timeout=TIMEOUT)
+                if r.status_code != 200:
+                    log.info("workday %s/%s %s -> %s", host, site, q, r.status_code)
+                    break
+                data = r.json()
+            except Exception as e:
+                log.warning("workday %s failed: %s", host, e)
+                break
+            posts = data.get("jobPostings", []) or []
+            for p in posts:
+                path = p.get("externalPath") or ""
+                if not path or path in seen:
+                    continue
+                seen.add(path)
+                out.append({
+                    "company": company,
+                    "title": (p.get("title") or "").strip(),
+                    "url": f"https://{host}/{site}{path}",
+                    "location": p.get("locationsText") or "",
+                    "posted_at": _wd_posted(p.get("postedOn", "")),
+                    "description": "",
+                    "department": "",
+                    "source": f"Workday · {company}",
+                    "source_type": "Company site",
+                })
+            if len(posts) < 20:
+                break
+            offset += 20
+    return out
+
+
+def _wd_posted(s: str) -> str | None:
+    """'Posted Today' / 'Posted 3 Days Ago' / 'Posted 30+ Days Ago' -> ISO date."""
+    s = (s or "").lower()
+    today = datetime.now(timezone.utc).date()
+    if "today" in s:
+        return today.isoformat()
+    if "yesterday" in s:
+        return (today - timedelta(days=1)).isoformat()
+    m = re.search(r"(\d+)\+?\s*days?", s)
+    if m:
+        return (today - timedelta(days=int(m.group(1)))).isoformat()
+    return None
+
+
+# ------------------------------------------------------------ SmartRecruiters
+def fetch_smartrecruiters(company: str, slug: str) -> list[dict]:
+    out, offset = [], 0
+    while True:
+        try:
+            data = _get(f"https://api.smartrecruiters.com/v1/companies/{slug}/postings?limit=100&offset={offset}").json()
+        except Exception as e:
+            log.warning("smartrecruiters %s failed: %s", slug, e)
+            break
+        items = data.get("content", []) or []
+        for p in items:
+            loc = p.get("location") or {}
+            out.append({
+                "company": company or p.get("company", {}).get("name", ""),
+                "title": (p.get("name") or "").strip(),
+                "url": f"https://jobs.smartrecruiters.com/{slug}/{p.get('id')}",
+                "location": ", ".join(filter(None, [loc.get("city"), loc.get("region"), loc.get("country")])),
+                "posted_at": (p.get("releasedDate") or "")[:10] or None,
+                "description": "",
+                "department": (p.get("department") or {}).get("label", "") + " " + (p.get("typeOfEmployment") or {}).get("label", ""),
+                "source": f"SmartRecruiters · {company}",
+                "source_type": "Company site",
+            })
+        offset += 100
+        if len(items) < 100 or offset >= data.get("totalFound", 0):
+            break
+    return out
+
+
+# ---------------------------------------------------------------- Workable
+def fetch_workable(company: str, slug: str) -> list[dict]:
+    out = []
+    for api in (f"https://apply.workable.com/api/v1/widget/accounts/{slug}?details=false",
+                f"https://www.workable.com/api/accounts/{slug}?details=false"):
+        try:
+            data = _get(api).json()
+        except Exception as e:
+            log.info("workable %s via %s failed: %s", slug, api, e)
+            continue
+        for j in data.get("jobs", []) or []:
+            out.append({
+                "company": company or data.get("name", ""),
+                "title": (j.get("title") or "").strip(),
+                "url": j.get("url") or j.get("shortlink") or f"https://apply.workable.com/{slug}/j/{j.get('shortcode')}",
+                "location": ", ".join(filter(None, [j.get("city"), j.get("state"), j.get("country")])) + (" Remote" if j.get("telecommuting") else ""),
+                "posted_at": (j.get("published_on") or j.get("created_at") or "")[:10] or None,
+                "description": "",
+                "department": j.get("department") or "",
+                "source": f"Workable · {company}",
+                "source_type": "Company site",
+            })
+        break
     return out

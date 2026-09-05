@@ -4,6 +4,7 @@
   const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 
   const FACETS = [
+    { key: "industry",    label: "Industry" },
     { key: "hubs",        label: "Location",     multi: true },
     { key: "level",       label: "Level" },
     { key: "category",    label: "Role" },
@@ -127,7 +128,7 @@
     const list = sortJobs(base().filter(j => facetPass(j)));
     const total = list.length;
     $("#match-count").textContent = `${total} matching role${total === 1 ? "" : "s"}`;
-    $("#page-title").textContent = { intern: "Quant Internships", newgrad: "Quant New Grad Roles", all: "All Quant Roles", saved: "Saved roles", applied: "Applied roles", hidden: "Hidden roles" }[state.tab];
+    $("#page-title").textContent = { intern: "Internships", newgrad: "New Grad Roles", all: "All Roles", saved: "Saved roles", applied: "Applied roles", hidden: "Hidden roles" }[state.tab];
     const slice = list.slice(0, state.limit);
     const root = $("#list");
     root.innerHTML = "";

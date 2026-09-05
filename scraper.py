@@ -19,6 +19,7 @@ from urllib.parse import urlparse, urlunparse, parse_qsl, urlencode
 
 import config
 import db
+import discover
 import sources
 
 log = logging.getLogger("scraper")
@@ -63,7 +64,8 @@ def job_id(url: str) -> str:
 
 
 def canonical_company(name: str) -> str:
-    n = re.sub(r"\s+", " ", (name or "").strip())
+    n = re.sub(r"[^\w&.,'()+/ -]", "", name or "")          # drop 🔥 and other decorations
+    n = re.sub(r"\s+", " ", n.strip())
     low = n.lower()
     for alias, canon in config.COMPANY_ALIASES.items():
         if low == alias or low.startswith(alias + " ") or low.startswith(alias + ","):
@@ -93,9 +95,15 @@ def level_of(title: str, department: str = "", hint: str | None = None) -> str |
     return None
 
 
-def is_quant_relevant(company: str, title: str, department: str, source_type: str) -> bool:
+TECH_ROLE_CATS = {"Quant Trading", "Quant Research", "Quant Dev", "Software Eng", "Data & ML", "Hardware/FPGA"}
+
+
+def is_relevant(company: str, title: str, department: str, source_type: str, category: str) -> bool:
+    """SWE / AI / quant / hardware roles anywhere; any role at a quant firm or bank quant desk."""
     if source_type == "Company site":
-        return True                      # we only registered quant firms
+        return True
+    if category in TECH_ROLE_CATS:
+        return True
     c = (company or "").lower()
     if any(n in c for n in config.QUANT_FIRM_NAMES if len(n) > 3):
         return True
@@ -177,18 +185,21 @@ def normalise(raw: dict) -> dict | None:
     level = level_of(title, dept, raw.get("level_hint"))
     if not level:
         return None
-    if not is_quant_relevant(raw.get("company", ""), title, dept, raw.get("source_type", "")):
+    category = categorize(title, dept)
+    if not is_relevant(raw.get("company", ""), title, dept, raw.get("source_type", ""), category):
         return None
     desc = raw.get("description") or ""
     loc = raw.get("location") or ""
+    company = canonical_company(raw.get("company"))
     return {
         "id": job_id(url),
-        "company": canonical_company(raw.get("company")),
+        "company": company,
+        "industry": config.industry_of(company),
         "title": title,
         "url": url,
         "location": loc,
         "hubs": hubs_for(loc),
-        "category": categorize(title, dept),
+        "category": category,
         "level": level,
         "eligibility": eligibility(title, desc),
         "work_mode": work_mode(title, desc, loc),
@@ -212,6 +223,21 @@ def collect(quick: bool = False, progress=None) -> tuple[list[dict], dict]:
         tasks.append((f"Ashby · {name}", sources.fetch_ashby, (name, slug)))
     for name, url, kind, level in config.GITHUB_LISTS:
         tasks.append((f"GitHub · {name}", sources.fetch_github_list, (name, url, kind, level)))
+    # auto-discovered boards (boards_auto.json) — every company the aggregator lists have ever linked
+    auto = discover.load()
+    for slug, name in auto.get("greenhouse", {}).items():
+        tasks.append((f"Greenhouse · {name}", sources.fetch_greenhouse, (name, slug, False)))
+    for slug, name in auto.get("lever", {}).items():
+        tasks.append((f"Lever · {name}", sources.fetch_lever, (name, slug)))
+    for slug, name in auto.get("ashby", {}).items():
+        tasks.append((f"Ashby · {name}", sources.fetch_ashby, (name, slug)))
+    for key, name in auto.get("workday", {}).items():
+        host, site = key.split("/", 1)
+        tasks.append((f"Workday · {name}", sources.fetch_workday, (name, host, site)))
+    for slug, name in auto.get("smartrecruiters", {}).items():
+        tasks.append((f"SmartRecruiters · {name}", sources.fetch_smartrecruiters, (name, slug)))
+    for slug, name in auto.get("workable", {}).items():
+        tasks.append((f"Workable · {name}", sources.fetch_workable, (name, slug)))
     if not quick:
         for name, url in config.HTML_PAGES:
             tasks.append((f"Careers page · {name}", sources.fetch_html_page, (name, url)))
@@ -219,7 +245,7 @@ def collect(quick: bool = False, progress=None) -> tuple[list[dict], dict]:
             tasks.append((f"LinkedIn · {kw} ({loc})", sources.fetch_linkedin, (kw, loc)))
 
     stats, jobs, done = {}, {}, 0
-    with ThreadPoolExecutor(max_workers=12) as ex:
+    with ThreadPoolExecutor(max_workers=16) as ex:
         futs = {ex.submit(fn, *args): label for label, fn, args in tasks}
         for fut in as_completed(futs):
             label = futs[fut]
@@ -286,19 +312,43 @@ def export_json(summary: dict | None = None) -> Path:
     return out
 
 
-def refresh(quick: bool = False, progress=None) -> dict:
+def should_alert(j: dict) -> bool:
+    if j.get("industry") in config.ALERT_INDUSTRIES:
+        return True
+    if j.get("category") in config.ALERT_CATEGORIES:
+        return True
+    if config.ALERT_COMPANY_SITE_ONLY_FOR_TECH:
+        return j.get("source_type") == "Company site"
+    return True
+
+
+def refresh(quick: bool = False, progress=None, alert: bool = False) -> dict:
+    if not quick:
+        try:                                   # grow the board list from the aggregator lists
+            _, added = discover.discover(discover.rows_from_lists())
+            if added:
+                log.warning("discovered %d new boards: %s", len(added), ", ".join(added[:10]))
+        except Exception as e:
+            log.warning("discovery failed: %s", e)
     jobs, stats = collect(quick=quick, progress=progress)
+    had_data = db.count_jobs() > 0
     summary = db.upsert_jobs(jobs, full_run=not quick)
     summary["sources"] = stats
     summary["ran_at"] = datetime.now(timezone.utc).isoformat()
     db.record_run(summary)
     export_json({k: v for k, v in summary.items() if k != "sources"})
+    if alert and had_data and summary.get("new_ids"):
+        import alerts
+        new_jobs = [j for j in jobs if j["id"] in set(summary["new_ids"]) and should_alert(j) and not j.get("closed")]
+        summary["alerts_sent"] = alerts.send_new_jobs(new_jobs)
+    summary.pop("new_ids", None)
     return summary
 
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--quick", action="store_true", help="skip LinkedIn + careers pages")
+    ap.add_argument("--alert", action="store_true", help="push new postings to ntfy (needs NTFY_TOPIC)")
     ap.add_argument("-v", action="store_true")
     a = ap.parse_args()
     logging.basicConfig(level=logging.INFO if a.v else logging.WARNING, format="%(levelname)s %(name)s: %(message)s")
@@ -306,5 +356,6 @@ if __name__ == "__main__":
     def prog(done, total, label, fetched, kept):
         print(f"[{done:>2}/{total}] {label:<55} {fetched:>4} fetched  {kept:>3} internships", file=sys.stderr)
 
-    s = refresh(quick=a.quick, progress=prog)
-    print(f"\n{s['total_active']} active roles ({s['new']} new, {s['reactivated']} back, {s['closed']} closed this run)")
+    s = refresh(quick=a.quick, progress=prog, alert=a.alert)
+    print(f"\n{s['total_active']} active roles ({s['new']} new, {s['reactivated']} back, {s['closed']} closed this run)"
+          + (f" · {s['alerts_sent']} alert(s) sent" if "alerts_sent" in s else ""))
