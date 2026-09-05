@@ -417,12 +417,15 @@ def fetch_workday(company: str, host: str, site: str, queries=_WD_QUERIES, per_q
                 if not path or path in seen:
                     continue
                 seen.add(path)
+                posted = _wd_posted(p.get("postedOn", ""))
+                if posted is None:
+                    posted = _wd_detail_date(host, tenant, site, path)   # exact date lives on the detail page
                 out.append({
                     "company": company,
                     "title": (p.get("title") or "").strip(),
                     "url": f"https://{host}/{site}{path}",
                     "location": p.get("locationsText") or "",
-                    "posted_at": _wd_posted(p.get("postedOn", "")),
+                    "posted_at": posted,
                     "description": "",
                     "department": "",
                     "source": f"Workday · {company}",
@@ -432,6 +435,29 @@ def fetch_workday(company: str, host: str, site: str, queries=_WD_QUERIES, per_q
                 break
             offset += 20
     return out
+
+
+_WD_DETAIL_BUDGET = {}
+
+
+def _wd_detail_date(host: str, tenant: str, site: str, path: str, max_per_board: int = 60) -> str | None:
+    """GET the posting's detail JSON; jobPostingInfo.startDate is the real posting date."""
+    key = f"{host}/{site}"
+    if _WD_DETAIL_BUDGET.get(key, 0) >= max_per_board:
+        return None
+    _WD_DETAIL_BUDGET[key] = _WD_DETAIL_BUDGET.get(key, 0) + 1
+    try:
+        r = SESSION.get(f"https://{host}/wday/cxs/{tenant}/{site}{path}",
+                        headers={"Accept": "application/json"}, timeout=TIMEOUT)
+        if r.status_code != 200:
+            return None
+        info = r.json().get("jobPostingInfo", {}) or {}
+        d = info.get("startDate") or info.get("postedOn")
+        if d and re.match(r"\d{4}-\d{2}-\d{2}", str(d)):
+            return str(d)[:10]
+        return _wd_posted(str(d or ""))
+    except Exception:
+        return None
 
 
 def _wd_posted(s: str) -> str | None:
