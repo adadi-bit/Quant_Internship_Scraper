@@ -304,9 +304,13 @@ DOCS = Path(__file__).parent / "docs"
 def export_json(summary: dict | None = None) -> Path:
     """Write docs/jobs.json — the static site's only data file."""
     DOCS.mkdir(exist_ok=True)
+    jobs = db.all_jobs(include_inactive=True)
+    for j in jobs:                                   # keep the site's data file small
+        j["description"] = (j.get("description") or "")[:500]
+    last = dict(summary or db.last_run() or {})
+    last.pop("new_ids", None)
     payload = {"generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-               "last_run": summary or db.last_run(),
-               "jobs": db.all_jobs(include_inactive=True)}
+               "last_run": last, "jobs": jobs}
     out = DOCS / "jobs.json"
     out.write_text(json.dumps(payload, ensure_ascii=False, separators=(",", ":")))
     return out
